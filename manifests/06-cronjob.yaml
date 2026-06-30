@@ -1,0 +1,200 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: leadership-report-agent
+  namespace: openshell
+  labels:
+    app.kubernetes.io/part-of: openshell
+    app.kubernetes.io/component: leadership-report
+spec:
+  # Every Wednesday at 18:00 UTC
+  schedule: "0 18 * * 3"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: openshell
+            app.kubernetes.io/component: leadership-report
+        spec:
+          serviceAccountName: openshell-sandbox
+          restartPolicy: Never
+          imagePullPolicy: Always
+          containers:
+            - name: launcher
+              image: quay.io/mcampbel/openshell-launcher:latest
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  sed "s|__DOC_ID__|${LEADERSHIP_DOC_ID}|g" \
+                    /config/sandbox-policy.yaml.tmpl > /tmp/sandbox-policy.yaml
+
+                  exec openshell sandbox create \
+                    --from="${AGENT_IMAGE}" \
+                    --name="leadership-report-$(date +%Y%m%d)" \
+                    --policy=/tmp/sandbox-policy.yaml \
+                    --no-keep \
+                    --env="MODEL_ID=${MODEL_ID}" \
+                    --env="LEADERSHIP_DOC_ID=${LEADERSHIP_DOC_ID}" \
+                    --env="MEETING_NAME=${MEETING_NAME}" \
+                    --env="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" \
+                    --env="GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" \
+                    --env="GOOGLE_REFRESH_TOKEN=${GOOGLE_REFRESH_TOKEN}" \
+                    --env="GOOGLE_QUOTA_PROJECT=${GOOGLE_QUOTA_PROJECT}" \
+                    -- python3 agent.py
+              env:
+                - name: OPENSHELL_GATEWAY_ENDPOINT
+                  value: "http://openshell.openshell.svc.cluster.local:8080"
+                - name: AGENT_IMAGE
+                  value: "quay.io/mcampbel/leadership-report-agent:latest"
+                - name: LEADERSHIP_DOC_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: leadership-report-config
+                      key: doc-id
+                - name: MODEL_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: leadership-report-config
+                      key: model-id
+                - name: MEETING_NAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: leadership-report-config
+                      key: meeting-name
+                - name: GOOGLE_QUOTA_PROJECT
+                  valueFrom:
+                    secretKeyRef:
+                      name: leadership-report-config
+                      key: gcp-project
+                - name: GOOGLE_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: google-credentials
+                      key: client-id
+                - name: GOOGLE_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: google-credentials
+                      key: client-secret
+                - name: GOOGLE_REFRESH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: google-credentials
+                      key: refresh-token
+              volumeMounts:
+                - name: sandbox-policy
+                  mountPath: /config
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+          volumes:
+            - name: sandbox-policy
+              configMap:
+                name: leadership-report-policy
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: leadership-report-policy
+  namespace: openshell
+  labels:
+    app.kubernetes.io/part-of: openshell
+    app.kubernetes.io/component: leadership-report
+data:
+  # __DOC_ID__ is replaced at runtime by the launcher from the secret
+  sandbox-policy.yaml.tmpl: |
+    version: 1
+
+    filesystem_policy:
+      include_workdir: true
+      read_only:
+        - /usr
+        - /lib
+        - /etc
+        - /app
+        - /opt
+        - /var/log
+        - /proc/self
+        - /dev/urandom
+      read_write:
+        - /sandbox
+        - /tmp
+        - /dev/null
+
+    landlock:
+      compatibility: best_effort
+
+    process:
+      run_as_user: sandbox
+      run_as_group: sandbox
+
+    network_policies:
+      google_drive:
+        name: Google Drive API (read-only)
+        endpoints:
+          - host: www.googleapis.com
+            port: 443
+            protocol: rest
+            enforcement: enforce
+            rules:
+              - allow:
+                  method: GET
+                  path: /drive/v3/files
+              - allow:
+                  method: GET
+                  path: /drive/v3/files/**
+        binaries:
+          - path: /app/.venv/bin/python*
+          - path: /usr/bin/python*
+          - path: /usr/local/bin/python*
+
+      google_docs:
+        name: Google Docs API (single doc)
+        endpoints:
+          - host: docs.googleapis.com
+            port: 443
+            protocol: rest
+            enforcement: enforce
+            rules:
+              - allow:
+                  method: GET
+                  path: /v1/documents/__DOC_ID__
+              - allow:
+                  method: POST
+                  path: /v1/documents/__DOC_ID__:batchUpdate
+        binaries:
+          - path: /app/.venv/bin/python*
+          - path: /usr/bin/python*
+          - path: /usr/local/bin/python*
+
+      google_auth:
+        name: Google OAuth2 (token refresh)
+        endpoints:
+          - host: oauth2.googleapis.com
+            port: 443
+            protocol: rest
+            enforcement: enforce
+            rules:
+              - allow:
+                  method: POST
+                  path: /token
+        binaries:
+          - path: /app/.venv/bin/python*
+          - path: /usr/bin/python*
+          - path: /usr/local/bin/python*
+          - path: /opt/app-root/bin/python*
+
+
+

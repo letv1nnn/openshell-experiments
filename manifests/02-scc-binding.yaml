@@ -1,0 +1,15 @@
+# Sandbox pods require privileged SCC for Landlock, seccomp, and netns isolation.
+# This binds the privileged SCC to the sandbox service account only —
+# the gateway pod itself runs unprivileged.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshell-sandbox-privileged
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:privileged
+subjects:
+  - kind: ServiceAccount
+    name: openshell-sandbox
+    namespace: openshell

@@ -1,0 +1,16 @@
+FROM registry.access.redhat.com/ubi9/python-312:latest
+
+USER 0
+RUN groupadd -r sandbox && useradd -r -g sandbox -d /sandbox -m sandbox
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY lib/ lib/
+COPY agent.py .
+RUN chmod -R a+rX /app
+
+USER sandbox
+ENTRYPOINT ["python3", "agent.py"]

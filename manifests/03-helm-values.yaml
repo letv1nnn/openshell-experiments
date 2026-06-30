@@ -1,0 +1,22 @@
+# OpenShift-specific Helm overrides for OpenShell gateway.
+#
+# OpenShift assigns UIDs via the namespace annotation range and
+# enforces its own fsGroup policy. Setting these to null prevents
+# the chart from emitting values that conflict with the SCC.
+
+server:
+  disableTls: true
+  logLevel: debug
+  auth:
+    allowUnauthenticatedUsers: true
+  tls:
+    clientTlsSecretName: ""
+
+pkiInitJob:
+  enabled: false
+
+podSecurityContext:
+  fsGroup: null
+
+securityContext:
+  runAsUser: null

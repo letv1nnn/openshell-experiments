@@ -4,9 +4,9 @@
 
 We want a persistent, sandboxed PR review agent that watches for new/updated PRs across multiple repos (multiple GitHub orgs), generates full senior-engineer-level reviews using an AI coding agent, and posts them directly as PR comments. The agent runs inside an OpenShell sandbox on **OpenShift**, with inference routed through **Google Vertex AI** to access Claude.
 
-The core architectural insight: **persistent sandbox, ephemeral AI sessions**. The sandbox stays alive with repos cloned and state tracked. A bash driver script polls GitHub for PRs. For each PR needing review, it gathers context (diff, changed files, architecture docs), launches a fresh Claude Code session with `--bare -p`, captures the output, and posts it via `gh pr review`. Context resets naturally between PRs — no accumulation, no drift.
+The core architectural insight: **persistent sandbox, ephemeral AI sessions**. The sandbox stays alive with repos cloned and state tracked. A bash driver script polls GitHub for PRs. For each PR needing review, it gathers context (diff, changed files, architecture docs), launches a fresh OpenCode session via `opencode run`, captures the output, and posts it via `gh pr review`. Context resets naturally between PRs — no accumulation, no drift.
 
-We use **Claude Code** (not OpenCode) for the AI sessions because Claude Code has documented non-interactive invocation (`--bare -p "prompt"`) and full default policy coverage in the base sandbox image. OpenCode's batch mode is undocumented.
+We use **OpenCode** for the AI sessions. OpenCode's `run` subcommand provides non-interactive invocation: `opencode run "prompt" --auto --model anthropic/claude-sonnet-4-6 --file context.md`. Key flags: `--auto` (auto-approve permissions), `--model`/`-m` (model selection), `--file`/`-f` (attach files). The prompt is passed as a positional argument. Note: `-p` is `--password` (for `opencode serve` auth), not `--prompt`. OpenCode has partial default policy coverage in the base sandbox — the policy must include `opencode.ai:443` and OpenCode binary paths. `ANTHROPIC_BASE_URL` requires the `/v1` suffix for OpenCode.
 
 ## File Structure
 
@@ -58,7 +58,8 @@ Scoped L7 rules:
 - **GitHub REST API** (`api.github.com:443`): Allow GET on `/repos/**` (read PRs, files, metadata). Allow POST on `/repos/*/pulls/*/reviews` and `/repos/*/pulls/*/comments` (post reviews). No PUT/PATCH/DELETE — agent cannot merge, close, or push.
 - **GitHub git transport** (`github.com:443`): Read-only clone/fetch via `git-upload-pack`. No `git-receive-pack` — agent cannot push.
 - **Kubernetes API** (`kubernetes.default.svc:443`): Allow GET on `/api/v1/namespaces/openshell/configmaps/pr-review-agent-config` only. Used by the config sync loop to read updated repo watchlists. Binary: `/usr/bin/curl`.
-- Binaries: `/usr/bin/gh`, `/usr/bin/git`, `/usr/bin/curl`, `/usr/lib/git-core/git-remote-http*`
+- **OpenCode telemetry** (`opencode.ai:443`): Allow outbound for OpenCode's update checks and telemetry. Binary: `/usr/local/bin/opencode`.
+- Binaries: `/usr/bin/gh`, `/usr/bin/git`, `/usr/bin/curl`, `/usr/local/bin/opencode`, `/usr/lib/git-core/git-remote-http*`
 - `inference.local` is handled by the gateway, not the network policy.
 
 ### Step 4: `payload/lib/` — shell library functions
@@ -93,7 +94,7 @@ Uses `jq` for JSON manipulation (available in base image).
 
 ### Step 5: `payload/prompts/review-system.md` — review prompt template
 
-Template with `{{ORG}}`, `{{REPO}}`, `{{PR_NUMBER}}`, `{{PR_TITLE}}` placeholders. Instructs Claude Code to:
+Template with `{{ORG}}`, `{{REPO}}`, `{{PR_NUMBER}}`, `{{PR_TITLE}}` placeholders. Instructs OpenCode to:
 1. Review for correctness, architecture, security, testing gaps, docs, and style
 2. Output structured markdown with sections: Summary, Critical Issues, Warnings, Suggestions, Testing Gaps, What Looks Good
 3. Reference specific `file:line` from the diff
@@ -111,7 +112,7 @@ Called by the polling loop for each PR needing review. Steps:
 3. Get the diff via `gh pr diff`
 4. Gather context: PR description, CONTRIBUTING.md (if exists), related test file paths
 5. Render the prompt template with `sed` substitution, append context + diff
-6. Invoke Claude Code: `ANTHROPIC_BASE_URL="https://inference.local" ANTHROPIC_API_KEY=unused claude --bare --output-format text -p "$(cat prompt_file)"` — capture stdout to file
+6. Invoke OpenCode: `ANTHROPIC_BASE_URL="https://inference.local/v1" ANTHROPIC_API_KEY=unused opencode run "$(cat prompt_file)" --auto --model anthropic/claude-sonnet-4-6 --file diff.patch` — capture stdout to file. Uses `--auto` to auto-approve permissions for unattended operation. The `--file` flag attaches the diff directly.
 7. Post the review via `gh pr review --comment --body "$(cat output)"`
 8. Cleanup temp files
 
@@ -188,7 +189,7 @@ Accepts a `--full` flag:
 
 - **OpenShift as primary target**: The agent runs on OpenShift with the gateway deployed via Helm. A local dev variant (`setup-local.sh`) exists for iteration without a cluster.
 - **Vertex AI + Claude**: Uses Google Vertex AI as the inference provider to access Claude via your existing subscription. The gateway manages GCP token refresh server-side — sandboxes never see raw GCP credentials.
-- **Claude Code over OpenCode**: Claude Code has documented `--bare -p` non-interactive mode and full default policy coverage. OpenCode's batch mode is undocumented in this codebase.
+- **OpenCode `run` for non-interactive reviews**: OpenCode's `run` subcommand accepts a prompt as positional args with `--auto` for unattended permission approval and `--file` to attach context files. Requires `/v1` suffix on `ANTHROPIC_BASE_URL` and explicit `opencode.ai` + binary paths in the sandbox policy (partial default coverage).
 - **`gh pr diff` over local git diff**: Avoids needing deep clone history. Shallow clones save disk; the local clone exists only for reading context files (tests, CONTRIBUTING.md).
 - **State in JSON file**: Simple, no external dependencies. Persists in the sandbox filesystem at `/sandbox/`. Cleaned up after 30 days.
 - **No webhooks**: Polling via `gh pr list` is simpler and fits the sandbox model (outbound only, no ingress needed). Works naturally on OpenShift without needing to expose an ingress for webhook delivery.
@@ -199,7 +200,7 @@ Accepts a `--full` flag:
 
 1. **Local dry run**: First, test with `setup-local.sh` against a local gateway and a test repo with an open PR. Verify the sandbox starts, the polling loop runs, and a review is posted.
 2. **OpenShift deployment**: Run `setup.sh` targeting your OpenShift cluster. Verify the Helm chart installs, the gateway comes up healthy, and the port-forward works.
-3. **Vertex AI inference**: Inside the sandbox, verify `inference.local` is reachable by running a simple Claude Code prompt. Confirm the Vertex AI token refresh is working via `openshell provider list`.
+3. **Vertex AI inference**: Inside the sandbox, verify `inference.local` is reachable by running `ANTHROPIC_BASE_URL="https://inference.local/v1" ANTHROPIC_API_KEY=unused opencode run "say hello" --auto`. Confirm the Vertex AI token refresh is working via `openshell provider list`.
 4. **Reconnect**: `openshell sandbox connect pr-reviewer` to see the agent's live output.
 5. **Re-review test**: Force-push a commit to the test PR; verify the agent detects the new SHA and re-reviews.
 6. **Error test**: Point at a non-existent repo; verify the loop logs the error and continues with other repos.

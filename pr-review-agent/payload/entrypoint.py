@@ -78,7 +78,10 @@ def run_review_subprocess(
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            proc.communicate()
+            try:
+                proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
             log.error("Review subprocess timed out for %s/%s#%s.", org, repo, pr_number)
             return False
         if proc.returncode != 0:

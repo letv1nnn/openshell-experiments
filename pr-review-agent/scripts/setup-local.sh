@@ -65,7 +65,7 @@ openshell sandbox create \
   --upload "${PROJECT_DIR}/payload:/sandbox/payload" \
   --upload "${PROJECT_DIR}/config.yaml:/sandbox/pr-review-agent/config.yaml" \
   --no-tty \
-  -- bash /sandbox/payload/entrypoint.sh
+  -- python3 /sandbox/payload/entrypoint.py
 
 echo ""
 log_info "Sandbox pr-reviewer is running."

@@ -368,10 +368,10 @@ def _split_findings(
     return inline, fallback
 
 
-def _killpg(pid: int) -> None:
-    """Send SIGTERM to an entire process group; ignore 'no such process'."""
+def _killpg(pid: int, sig: signal.Signals = signal.SIGTERM) -> None:
+    """Send a signal to an entire process group; ignore 'no such process'."""
     try:
-        os.killpg(pid, signal.SIGTERM)
+        os.killpg(pid, sig)
     except (ProcessLookupError, PermissionError):
         pass
 
@@ -526,12 +526,12 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            _killpg(proc.pid)
+            _killpg(proc.pid, signal.SIGKILL)
             proc.wait()
             log.error("OpenCode timed out after %ds.", timeout)
             return False
         finally:
-            _killpg(proc.pid)  # reap any children that outlived OpenCode
+            _killpg(proc.pid)  # reap any children that outlived OpenCode; SIGTERM is fine post-wait
             stop_heartbeat.set()
 
         with open(opencode_err) as f:

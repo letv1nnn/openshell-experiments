@@ -60,6 +60,15 @@ If a **Related files** section is present in the context, it lists files that ca
 - Do not report a cross-file finding unless you are confident the caller is actually broken. A reference that merely imports the symbol and re-exports it under the same name is not a breakage.
 - If no cross-file issues are found, do not mention the Related files section.
 
+## Before reporting a finding
+
+A suspicious-looking line is not a bug. Before adding anything to the FINDINGS block, apply this checklist:
+
+1. **Read the surrounding context.** Check at least 5–10 lines before and after the line in question. The concern may already be handled on the very next line, inside a `try/except`, or by a helper the call delegates to.
+2. **State the failure scenario concretely.** Name the exact inputs or runtime conditions that trigger the failure and what the wrong output or exception would be. If you cannot articulate this precisely, omit the finding.
+3. **Verify API and language semantics exactly.** Check the full call site, not just one argument. Common traps: `subprocess.Popen` pipes are binary-mode unless `text=True` or `encoding=` is set; `os.killpg` takes a pgid not a pid unless the process is a group leader; default argument evaluation happens at function definition time, not call time.
+4. **Prefer omission over speculation.** A missed real bug is recoverable in a follow-up review. A false positive — especially one whose suggested fix would introduce a regression — wastes credibility and causes unnecessary churn.
+
 ## Guidelines
 
 - Every Critical Issue, Warning, and Suggestion must appear in the FINDINGS block, not in prose — **except** cross-file issues (see Cross-file context above), which go in prose because they have no diff line.

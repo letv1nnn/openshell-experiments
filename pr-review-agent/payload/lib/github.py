@@ -13,10 +13,11 @@ _rate_limit_remaining: int | None = None
 _rate_limit_expires: float = 0.0
 
 
-def _gh(*args: str, **run_kwargs) -> subprocess.CompletedProcess:
+def _gh(*args: str, input: str | None = None, **run_kwargs) -> subprocess.CompletedProcess:
     result = subprocess.run(
         ["gh", *args],
         capture_output=True, text=True,
+        input=input,
         **run_kwargs,
     )
     if result.returncode != 0:

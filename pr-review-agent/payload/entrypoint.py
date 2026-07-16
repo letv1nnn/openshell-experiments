@@ -66,6 +66,7 @@ def run_review_subprocess(
             stdout=None,  # inherit — review.py logs flow straight to pod stdout in real time
             stderr=subprocess.PIPE,
             text=True,
+            start_new_session=True,
             env={**os.environ, "REPOS_BASE": REPOS_BASE,
                  "REVIEW_LOG_PREFIX": log_prefix,
                  "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO")},
@@ -73,7 +74,10 @@ def run_review_subprocess(
         try:
             _, stderr = proc.communicate(timeout=review_timeout + 30)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             proc.communicate()
             log.error("Review subprocess timed out for %s/%s#%s.", org, repo, pr_number)
             return False

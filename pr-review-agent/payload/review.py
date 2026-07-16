@@ -580,8 +580,10 @@ if __name__ == "__main__":
         log.error("Usage: review.py <org> <repo> <pr_number> <head_sha>")
         sys.exit(1)
 
-    org, repo, head_sha = sys.argv[1], sys.argv[2], sys.argv[4]
+    org = sys.argv[1]
+    repo = sys.argv[2]
     pr_number = int(sys.argv[3])
+    head_sha = sys.argv[4]
     try:
         config = load_config("/app/pr-review-agent/config.yaml")
     except Exception as e:

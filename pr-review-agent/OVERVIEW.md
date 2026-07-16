@@ -100,12 +100,10 @@ The result is injected into the context file as a `## Related files` section, te
 #### OpenCode invocation
 
 ```
-opencode run "<prompt>" \
-  --model anthropic/claude-sonnet-4-6 \
-  -f instructions.md \
-  -f context.md \
-  -f pr.patch
+opencode run --model anthropic/claude-sonnet-4-6
 ```
+
+The full prompt — instructions, context (PR description, CONTRIBUTING.md, prior reviews, cross-file snippets), and the annotated diff — is assembled in memory and written to OpenCode's stdin via a daemon thread. Using stdin rather than `-f` file attachments means all content is present in the model's initial context without requiring tool calls to read files. This also means `--auto` is not needed, keeping OpenShell's permission enforcement intact.
 
 `ANTHROPIC_BASE_URL=https://inference.local/v1` routes inference through the OpenShell gateway to Vertex AI. A heartbeat thread logs progress every 30 seconds. If OpenCode doesn't exit within `review_timeout_seconds`, `killpg()` kills the entire process group.
 
@@ -184,8 +182,8 @@ entrypoint.py: list_open_prs() detects new head_sha
           6. git grep FETCH_HEAD -- {symbols} → usages in files outside the diff
           7. _extract_snippets() from git tree → related_context injected into context.md
           8. _process_diff() → annotated diff with [N] line numbers + valid_right_lines set
-          9. render instructions.md, context.md, pr.patch to tmpdir
-         10. opencode run (ANTHROPIC_BASE_URL=inference.local → OpenShell gateway → Vertex AI → Claude)
+          9. assemble full_prompt (instructions + context + annotated diff) in memory
+         10. opencode run --model ... (stdin ← full_prompt; ANTHROPIC_BASE_URL=inference.local → OpenShell gateway → Vertex AI → Claude)
          11. _parse_output() → prose summary + findings[]
          12. _split_findings() → inline comments (exact/snapped) + prose fallbacks
          13. post_review() → single GitHub Reviews API call (prose + all inline comments)

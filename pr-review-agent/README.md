@@ -22,9 +22,8 @@ The agent runs as an OpenShell sandbox on OpenShift (ROSA). It polls GitHub on a
 │       │                  │       (symbol → usages)             │
 │       │            _process_diff()                             │
 │       │                  │                                     │
-│       │            opencode run -f instructions.md             │
-│       │                        -f context.md                   │
-│       │                        -f pr.patch                     │
+│       │            opencode run --model ...                    │
+│       │            (full prompt piped via stdin)               │
 │       │                       ↓                                │
 │       │              _parse_output()                           │
 │       │            ┌────────────────┐                          │
@@ -60,7 +59,7 @@ The agent runs as an OpenShell sandbox on OpenShift (ROSA). It polls GitHub on a
 
 6. **Diff annotation** — The raw unified diff is annotated with `[N]` prefixes on every context and addition line, giving the model explicit new-file line-number anchors to reference in its findings.
 
-7. **AI review** — OpenCode runs with three files: the review instructions (`review-system.md`), context (PR description, CONTRIBUTING.md, prior reviews, cross-file snippets), and the annotated diff. Inference routes through `inference.local` to Vertex AI / Claude.
+7. **AI review** — OpenCode receives the full prompt via stdin: instructions (`review-system.md`), context (PR description, CONTRIBUTING.md, prior reviews, cross-file snippets), and the annotated diff — all assembled in memory, no temporary files. Inference routes through `inference.local` to Vertex AI / Claude.
 
 8. **Structured output parsing** — The model output is split at the `<!-- FINDINGS [...] -->` sentinel. Everything before the sentinel is the prose summary; the JSON array inside is the findings list (each with `file`, `line`, `severity`, `body`).
 

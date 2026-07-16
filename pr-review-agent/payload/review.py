@@ -461,21 +461,22 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
         except Exception as e:
             log.warning("Cross-file analysis failed: %s — continuing without it.", e)
 
+    instructions = render_instructions(template, org, repo, pr_number, meta["title"])
+    context_text = build_context(meta, repo_dir_path, prior_reviews, max_prior_reviews,
+                                 related_context=related_context)
+    annotated_diff, valid_lines = _process_diff(diff)
+    full_prompt = (
+        f"{instructions}\n\n"
+        f"---\n\n"
+        f"{context_text}\n\n"
+        f"---\n\n"
+        f"## Diff\n\n"
+        f"{annotated_diff}"
+    )
+
+    log.info("Running OpenCode (timeout %ds)...", timeout)
+
     with tempfile.TemporaryDirectory() as tmp:
-        instr_file = os.path.join(tmp, "instructions.md")
-        ctx_file = os.path.join(tmp, "context.md")
-        diff_file = os.path.join(tmp, "pr.patch")
-
-        with open(instr_file, "w") as f:
-            f.write(render_instructions(template, org, repo, pr_number, meta["title"]))
-        with open(ctx_file, "w") as f:
-            f.write(build_context(meta, repo_dir_path, prior_reviews, max_prior_reviews,
-                                  related_context=related_context))
-        annotated_diff, valid_lines = _process_diff(diff)
-        with open(diff_file, "w") as f:
-            f.write(annotated_diff)
-
-        log.info("Running OpenCode (timeout %ds)...", timeout)
         opencode_out = os.path.join(tmp, "opencode.out")
         opencode_err = os.path.join(tmp, "opencode.err")
 
@@ -488,20 +489,11 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
         try:
             with open(opencode_out, "w") as out_fh, open(opencode_err, "w") as err_fh:
                 proc = subprocess.Popen(
-                    [
-                        "opencode", "run",
-                        ("Review the pull request following the instructions in instructions.md. "
-                         "Context (PR description, prior reviews) is in context.md. "
-                         "The diff is in pr.patch."),
-                        "--model", model,
-                        "-f", instr_file,
-                        "-f", ctx_file,
-                        "-f", diff_file,
-                    ],
+                    ["opencode", "run", "--model", model],
                     env={**os.environ,
                          "ANTHROPIC_BASE_URL": "https://inference.local/v1",
                          "ANTHROPIC_API_KEY": "unused"},
-                    stdin=subprocess.DEVNULL,
+                    stdin=subprocess.PIPE,
                     stdout=out_fh,
                     stderr=err_fh,
                     start_new_session=True,
@@ -509,6 +501,17 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
         except Exception as e:
             log.error("OpenCode launch failed: %s", e)
             return False
+
+        # Write the full prompt to stdin in a daemon thread — the pipe buffer
+        # (~64 KB) is smaller than large diffs, so writing in the main thread
+        # before OpenCode drains it would deadlock.
+        def _write_stdin():
+            try:
+                proc.stdin.write(full_prompt.encode())
+            finally:
+                proc.stdin.close()
+
+        threading.Thread(target=_write_stdin, daemon=True).start()
 
         stop_heartbeat = threading.Event()
         start_time = time.monotonic()

@@ -155,17 +155,22 @@ def _poll_one_repo(r: dict, review_timeout: int, max_retries: int) -> None:
         except Exception as e:
             log.warning("Label check failed for %s/%s#%s: %s", org, repo, pr_number, e)
 
-        # Heal state after sandbox restart: if a review already exists on
-        # this exact SHA, mark it locally and skip without re-posting.
+        # Heal state after sandbox restart: if the agent already posted a review
+        # on this exact SHA (matched by the authenticated GitHub login, not just
+        # any reviewer), mark it locally and skip without re-posting.
         # Only checked once per key to avoid burning API rate limit every cycle.
         key = (org, repo, pr_number, head_sha)
         if key not in _heal_checked:
             _heal_checked.add(key)
             try:
                 prior = get_prior_reviews(org, repo, pr_number)
-                if any(rev.get("commit_id") == head_sha for rev in prior):
+                if BOT_LOGIN and any(
+                    rev.get("commit_id") == head_sha
+                    and rev.get("user", {}).get("login") == BOT_LOGIN
+                    for rev in prior
+                ):
                     log.info(
-                        "SKIP %s/%s#%s: review already posted at %s — healing state.",
+                        "SKIP %s/%s#%s: agent review already posted at %s — healing state.",
                         org, repo, pr_number, head_sha[:8],
                     )
                     mark_reviewed(STATE_DIR, org, repo, pr_number, head_sha)
@@ -204,6 +209,17 @@ if auth_check.returncode != 0:
     )
     sys.exit(1)
 log.info("GitHub auth: OK")
+
+try:
+    _whoami = subprocess.run(
+        ["gh", "api", "user", "--jq", ".login"],
+        capture_output=True, text=True, check=True,
+    )
+    BOT_LOGIN: str | None = _whoami.stdout.strip()
+    log.info("GitHub identity: @%s", BOT_LOGIN)
+except Exception as _e:
+    log.warning("Could not resolve GitHub identity: %s — heal check will skip all reviews.", _e)
+    BOT_LOGIN = None
 
 try:
     config = load_config(CONFIG_FALLBACK)

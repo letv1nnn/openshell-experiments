@@ -50,7 +50,7 @@ The agent runs as an OpenShell sandbox on OpenShift (ROSA). It polls GitHub on a
 
 1. **Poll** — `entrypoint.py` fetches open PRs for each watched repo every `polling_interval_seconds`. Each PR is keyed by `org/repo/number/head_sha`. Already-reviewed SHAs are skipped.
 
-2. **State heal** — On sandbox restart, the agent checks GitHub's review history for each pending PR. If a review was already posted at the current SHA, it records it locally and skips — no duplicate reviews. Limitation: the heal check matches on SHA alone and does not filter by bot author, so a human review on the same commit before restart will prevent the agent from posting.
+2. **State heal** — On sandbox restart, the agent checks GitHub's review history for each pending PR. If a review was already posted by this agent (matched by the authenticated GitHub login and the current SHA), it records it locally and skips — no duplicate reviews. Human reviews on the same commit do not suppress the agent.
 
 3. **Parallel reviews** — New PRs are submitted to a `ThreadPoolExecutor` (configurable `max_concurrent_reviews`). An `in_flight` set prevents the same PR from being submitted twice across poll cycles.
 
@@ -67,6 +67,8 @@ The agent runs as an OpenShell sandbox on OpenShift (ROSA). It polls GitHub on a
 9. **Inline comment placement** — Each finding is validated against the set of valid right-side diff lines. If the exact line is in the diff it goes inline. If the line is off by a small amount, the agent snaps it to the nearest valid line in the same file. Only if the file has no diff lines at all does it fall back to a prose bullet in the review body.
 
 10. **Post** — A single GitHub Reviews API call posts the prose summary and all inline comments atomically.
+
+For a detailed walkthrough of every component and the end-to-end flow, see [OVERVIEW.md](OVERVIEW.md).
 
 ## Prerequisites
 

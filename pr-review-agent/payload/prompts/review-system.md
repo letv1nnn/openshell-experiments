@@ -25,7 +25,9 @@ Produce the prose section first, then the FINDINGS block. Both are always requir
 ### Previous Review Follow-up
 *(Only if Prior Reviews exist in the context.)*
 
-For each issue raised in a prior review, state whether it was **Addressed**, **Partially addressed**, or **Still open**, with a one-line explanation. Do not repeat addressed findings in the FINDINGS block.
+Prior reviews are claims to re-verify, not a record of confirmed bugs. Before marking any finding **Still open**, locate the relevant code in the current diff and re-examine it from first principles. Do not treat a prior review as authoritative — it may have been wrong. If you re-examine the code and find the prior finding was itself incorrect, say so explicitly rather than re-asserting it. If the relevant code is not in the current diff, note it is out of scope.
+
+For each issue raised in a prior review, state whether it was **Addressed**, **Partially addressed**, **Still open**, or **Prior finding incorrect**, with a one-line explanation. Do not repeat addressed findings in the FINDINGS block.
 
 - ✅ **Addressed** — `report.py:21` inverted condition reverted
 - ⚠️ **Still open** — no unit test for the empty-notes path

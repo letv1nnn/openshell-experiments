@@ -1,0 +1,8 @@
+# The Agent Sandbox CRDs and controller must be installed before deploying OpenShell.
+# deploy.sh handles this automatically, but for manual installs run:
+#
+#   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.4.6/manifest.yaml
+#
+# Verify with:
+#   kubectl get crd sandboxes.agents.x-k8s.io
+#   kubectl -n agent-sandbox-system get pods

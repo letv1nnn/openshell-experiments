@@ -1,0 +1,33 @@
+polling_interval_seconds: 120
+
+# List of repos to watch. Each entry must have org and repo.
+# Optional per-repo settings override the review_settings defaults.
+repos:
+  - org: your-org
+    repo: your-repo
+    ignore_drafts: true
+    ignore_labels:
+      - do-not-review
+      - wip
+# Additional repos:
+# repos:
+#   - org: your-org
+#     repo: another-repo
+#     ignore_drafts: true
+#     ignore_labels:
+#       - do-not-review
+#       - wip
+
+review_settings:
+  model: "anthropic/claude-sonnet-4-6"
+  max_diff_lines: 8000
+  max_files_changed: 50
+  review_timeout_seconds: 600
+  max_retries: 3
+  max_concurrent_reviews: 5
+  max_prior_reviews: 3
+  comment_prefix: "**AI PR Review**"
+  codebase_aware: true          # enable cross-file symbol usage analysis
+  max_related_files: 10         # max unique files pulled in across all symbols
+  max_related_lines_per_file: 30  # max lines per file after range merging
+  max_related_lines: 300        # hard global line cap (~2500 tokens); raise with caution

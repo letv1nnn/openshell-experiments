@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: openshell
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+spec:
+  to:
+    kind: Service
+    name: openshell
+  port:
+    targetPort: 8443
+  tls:
+    termination: passthrough

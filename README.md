@@ -12,13 +12,17 @@ A weekly CronJob that fetches Google Meet/Gemini meeting notes from Drive, sends
 
 **Status:** Deployed
 
-### [PR Review Agent](pr-review-agent/) *(planned)*
+### [PR Review Agent](pr-review-agent/)
 
-A persistent sandbox agent that polls GitHub for new/updated PRs across multiple repos and orgs, generates senior-engineer-level reviews using Claude Code (`--bare -p`), and posts them via `gh pr review`. Uses Vertex AI for Claude inference, with config delivered via a Kubernetes ConfigMap for live repo watchlist updates without restarting the sandbox.
+A persistent sandbox agent that polls GitHub for open PRs across multiple repos, generates senior-engineer-level code reviews using Claude (via Vertex AI), and posts them as GitHub Reviews with inline diff comments.
 
-**Stack:** Bash, Claude Code, GitHub CLI, Vertex AI (Claude), OpenShell persistent sandbox
+Each review runs as an isolated subprocess that invokes [OpenCode](https://opencode.ai) with three context files: the review instructions, PR metadata (description, prior reviews, CONTRIBUTING.md), and the annotated diff. The diff is pre-processed to stamp new-file line numbers on every context and addition line, giving the model precise anchors for inline comment placement. Before invoking OpenCode, the agent fetches the PR branch head and greps the live tree for usages of any renamed or removed public symbols in files outside the diff — broken callers are surfaced in the review even when they aren't part of the change.
 
-**Status:** Design phase — see [PLAN.md](pr-review-agent/PLAN.md)
+Reviews run in parallel across repos. State is persisted with atomic writes so sandbox restarts don't double-post. A heal check on startup reconciles local state against GitHub's review history.
+
+**Stack:** Python, OpenCode, GitHub CLI, Vertex AI (Claude), OpenShell persistent sandbox
+
+**Status:** Deployed
 
 ## Common Patterns
 

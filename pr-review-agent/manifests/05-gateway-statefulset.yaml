@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openshell
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+spec:
+  serviceName: openshell
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openshell
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openshell
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: openshell
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: ghcr.io/nvidia/openshell/gateway:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/openshell-gateway"]
+          args: ["--config", "/etc/openshell/config/gateway.toml"]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - name: grpc
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: "info"
+            - name: OPENSHELL_DB_URL
+              value: "sqlite:/var/openshell/openshell.db"
+            - name: XDG_STATE_HOME
+              value: "/var/openshell/state"
+            - name: XDG_RUNTIME_DIR
+              value: "/var/openshell/runtime"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/openshell/config
+              readOnly: true
+            - name: server-tls
+              mountPath: /etc/openshell/tls
+              readOnly: true
+            - name: client-ca
+              mountPath: /etc/openshell/client-ca
+              readOnly: true
+            - name: jwt-signing-key
+              mountPath: /etc/openshell/jwt
+              readOnly: true
+            - name: data
+              mountPath: /var/openshell
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: openshell-gateway-config
+        - name: server-tls
+          secret:
+            secretName: openshell-server-tls
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: client-ca
+          secret:
+            secretName: openshell-server-client-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: jwt-signing-key
+          secret:
+            secretName: openshell-sandbox-jwt-signing-secret
+            items:
+              - key: signing.pem
+                path: signing.pem
+              - key: public.pem
+                path: public.pem
+              - key: kid
+                path: kid
+      terminationGracePeriodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: openshell
+          app.kubernetes.io/component: gateway
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

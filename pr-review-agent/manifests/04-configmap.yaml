@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openshell-gateway-config
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+data:
+  gateway.toml: |
+    [openshell.gateway]
+    bind_address = "0.0.0.0:8443"
+    log_level = "info"
+    sandbox_namespace = "openshell"
+    default_image = "ghcr.io/nvidia/openshell/sandbox:latest"
+    supervisor_image = "ghcr.io/nvidia/openshell/supervisor:latest"
+    service_account_name = "openshell-sandbox"
+    client_tls_secret_name = "openshell-sandbox-client-tls"
+    compute_drivers = ["kubernetes"]
+
+    [openshell.gateway.tls]
+    cert_path = "/etc/openshell/tls/tls.crt"
+    key_path = "/etc/openshell/tls/tls.key"
+    client_ca_path = "/etc/openshell/client-ca/ca.crt"
+
+    [openshell.gateway.auth]
+    allow_unauthenticated_users = true
+
+    [openshell.gateway.gateway_jwt]
+    signing_key_path = "/etc/openshell/jwt/signing.pem"
+    public_key_path  = "/etc/openshell/jwt/public.pem"
+    kid_path         = "/etc/openshell/jwt/kid"
+    ttl_secs         = 3600
+
+    [openshell.drivers.kubernetes]
+    grpc_endpoint = "https://openshell.openshell.svc.cluster.local:8443"
+    supervisor_sideload_method = "init-container"

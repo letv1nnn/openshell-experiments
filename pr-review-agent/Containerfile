@@ -1,0 +1,44 @@
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER root
+
+# OpenShell policy.yaml requires run_as_user: sandbox / run_as_group: sandbox
+RUN groupadd -r sandbox && useradd -r -g sandbox -d /sandbox sandbox
+
+# git
+RUN dnf install -y git && dnf clean all
+
+# gh CLI — via GitHub's RPM repo
+RUN curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo \
+      -o /etc/yum.repos.d/github-cli.repo \
+    && dnf install -y gh \
+    && dnf clean all
+
+# opencode — pin version for reproducible builds
+ARG OPENCODE_VERSION=1.17.13
+RUN curl -fsSL \
+      "https://github.com/sst/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
+      -o /tmp/opencode.tar.gz \
+    && tar -xzf /tmp/opencode.tar.gz -C /tmp \
+    && mv /tmp/opencode /usr/local/bin/opencode \
+    && chmod +x /usr/local/bin/opencode \
+    && rm /tmp/opencode.tar.gz
+
+# Python dependencies
+RUN pip3 install --no-cache-dir pyyaml
+
+# /sandbox is volume-mounted by OpenShell at runtime — files placed there in the
+# image are hidden. Use /app for code, which is unaffected by the mount.
+RUN mkdir -p \
+      /app/payload \
+      /app/pr-review-agent \
+      /sandbox/pr-review-agent/repos \
+      /sandbox/pr-review-agent/state \
+    && chown -R sandbox:sandbox /app /sandbox
+
+# Bake payload and default config into the image
+COPY --chown=sandbox:sandbox payload/ /app/payload/
+COPY --chown=sandbox:sandbox config.yaml /app/pr-review-agent/config.yaml
+
+USER sandbox
+WORKDIR /sandbox

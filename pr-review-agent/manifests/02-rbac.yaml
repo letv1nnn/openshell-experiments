@@ -1,0 +1,95 @@
+---
+# Gateway service account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+
+---
+# Sandbox service account (used by sandbox pods)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell-sandbox
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: sandbox
+
+---
+# Cluster-wide: node inspection for GPU capacity + TokenReview for sandbox auth
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openshell-gateway
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshell-gateway
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openshell-gateway
+subjects:
+  - kind: ServiceAccount
+    name: openshell
+    namespace: openshell
+
+---
+# Namespace-scoped: sandbox CRD management, events, pod inspection
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openshell-sandbox
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+rules:
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes", "sandboxes/status"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshell-sandbox
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openshell-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: openshell
+    namespace: openshell
+

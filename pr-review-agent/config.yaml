@@ -3,21 +3,20 @@ polling_interval_seconds: 120
 # List of repos to watch. Each entry must have org and repo.
 # Optional per-repo settings override the review_settings defaults.
 repos:
-  - org: Bobbins228
-    repo: openshell-experiments
+  - org: your-org
+    repo: your-repo
     ignore_drafts: true
     ignore_labels:
       - do-not-review
       - wip
-# Example:
+# Additional repos:
 # repos:
-#   - org: my-org
-#     repo: my-repo
+#   - org: your-org
+#     repo: another-repo
 #     ignore_drafts: true
 #     ignore_labels:
 #       - do-not-review
 #       - wip
-#     # file_patterns: ["*.go", "*.py"]  # optional: only review PRs touching these patterns
 
 review_settings:
   model: "anthropic/claude-sonnet-4-6"

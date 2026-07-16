@@ -72,7 +72,11 @@ openshell sandbox delete pr-reviewer 2>/dev/null || true
 
 # 8. Create sandbox
 log_step "Creating pr-reviewer sandbox..."
-SANDBOX_IMAGE="${SANDBOX_IMAGE:-quay.io/mcampbel/pr-review-agent:latest}"
+if [[ -z "${SANDBOX_IMAGE:-}" ]]; then
+  echo "Error: SANDBOX_IMAGE is not set. Build and push the image first, then:"
+  echo "  export SANDBOX_IMAGE=your-registry/pr-review-agent:latest"
+  exit 1
+fi
 openshell sandbox create \
   --name pr-reviewer \
   --from "${SANDBOX_IMAGE}" \

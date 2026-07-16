@@ -146,7 +146,7 @@ podman build --platform linux/amd64 -t your-registry/pr-review-agent:latest .
 podman push your-registry/pr-review-agent:latest
 ```
 
-Override the default image at sandbox creation time by setting `SANDBOX_IMAGE`:
+Set `SANDBOX_IMAGE` to your pushed image before running `setup-providers.sh` — there is no default:
 
 ```bash
 export SANDBOX_IMAGE=your-registry/pr-review-agent:latest

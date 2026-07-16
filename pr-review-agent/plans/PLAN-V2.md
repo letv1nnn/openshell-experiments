@@ -80,7 +80,7 @@ WORKDIR /sandbox
 
 ```bash
 mk build --push --tag pr-reviewer-sandbox
-# produces: quay.io/mcampbel/pr-reviewer-sandbox:latest
+# produces: your-registry/pr-review-agent:latest
 ```
 
 ### Binary paths for `policy.yaml`
@@ -107,7 +107,7 @@ UBI Python installs binaries at different paths than the OpenShell base. Update 
       - { path: /usr/local/bin/opencode }
 ```
 
-Verify paths after the first image build: `docker run --rm quay.io/mcampbel/pr-reviewer-sandbox:latest which gh git python3 opencode`.
+Verify paths after the first image build: `docker run --rm your-registry/pr-review-agent:latest which gh git python3 opencode`.
 
 ### Sandbox create command
 
@@ -116,7 +116,7 @@ Update `scripts/setup-providers.sh` to reference the custom image and use `pytho
 ```bash
 openshell sandbox create \
   --name pr-reviewer \
-  --from quay.io/mcampbel/pr-reviewer-sandbox:latest \
+  --from your-registry/pr-review-agent:latest \
   --provider vertex-pr-reviewer \
   --provider github-pr-reviewer \
   --policy policy.yaml \

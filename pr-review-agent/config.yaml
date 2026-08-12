@@ -3,8 +3,8 @@ polling_interval_seconds: 120
 # List of repos to watch. Each entry must have org and repo.
 # Optional per-repo settings override the review_settings defaults.
 repos:
-  - org: your-org
-    repo: your-repo
+  - org: letv1nnn
+    repo: openshell-experiments
     ignore_drafts: true
     ignore_labels:
       - do-not-review

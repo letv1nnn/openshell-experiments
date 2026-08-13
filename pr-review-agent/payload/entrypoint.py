@@ -37,7 +37,11 @@ STATE_DIR = "/sandbox/pr-review-agent/state"
 REPOS_BASE = "/sandbox/pr-review-agent/repos"
 HEARTBEAT_FILE = os.path.join(STATE_DIR, "heartbeat")
 
+# Uploaded config lands in the writable /sandbox mount; the image bakes a copy
+# under read-only /app. Prefer the uploaded one, fall back to the baked default.
+CONFIG_PRIMARY = "/sandbox/pr-review-agent/config.yaml"
 CONFIG_FALLBACK = "/app/pr-review-agent/config.yaml"
+CONFIG_PATH = CONFIG_PRIMARY if os.path.exists(CONFIG_PRIMARY) else CONFIG_FALLBACK
 
 in_flight: set[tuple] = set()
 in_flight_lock = threading.Lock()
@@ -229,7 +233,7 @@ except Exception as _e:
     BOT_LOGIN = None
 
 try:
-    config = load_config(CONFIG_FALLBACK)
+    config = load_config(CONFIG_PATH)
 except (ValueError, FileNotFoundError) as e:
     log.error("Config error: %s", e)
     sys.exit(1)
@@ -260,7 +264,7 @@ while True:
         log.warning("Failed to write heartbeat: %s", e)
 
     try:
-        config = load_config(CONFIG_FALLBACK)
+        config = load_config(CONFIG_PATH)
     except Exception as e:
         log.error("Config reload failed: %s — continuing with previous config.", e)
 

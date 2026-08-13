@@ -62,8 +62,8 @@ openshell sandbox create \
   --provider vertex-pr-reviewer \
   --provider github-pr-reviewer \
   --policy "${PROJECT_DIR}/policy.yaml" \
-  --upload "${PROJECT_DIR}/payload:/sandbox/payload" \
-  --upload "${PROJECT_DIR}/config.yaml:/sandbox/pr-review-agent/config.yaml" \
+  --upload "${PROJECT_DIR}/payload:/sandbox" \
+  --upload "${PROJECT_DIR}/config.yaml:/sandbox/pr-review-agent" \
   --no-tty \
   -- python3 /sandbox/payload/entrypoint.py
 

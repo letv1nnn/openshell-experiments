@@ -585,7 +585,9 @@ if __name__ == "__main__":
     pr_number = int(sys.argv[3])
     head_sha = sys.argv[4]
     try:
-        config = load_config("/app/pr-review-agent/config.yaml")
+        _cfg_primary = "/sandbox/pr-review-agent/config.yaml"
+        _cfg_path = _cfg_primary if os.path.exists(_cfg_primary) else "/app/pr-review-agent/config.yaml"
+        config = load_config(_cfg_path)
     except Exception as e:
         log.error("Failed to load config: %s", e)
         sys.exit(1)

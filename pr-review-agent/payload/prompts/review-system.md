@@ -70,6 +70,7 @@ A suspicious-looking line is not a bug. Before adding anything to the FINDINGS b
 2. **State the failure scenario concretely.** Name the exact inputs or runtime conditions that trigger the failure and what the wrong output or exception would be. If you cannot articulate this precisely, omit the finding.
 3. **Verify API and language semantics exactly.** Check the full call site, not just one argument. Common traps: `subprocess.Popen` pipes are binary-mode unless `text=True` or `encoding=` is set; `os.killpg` takes a pgid not a pid unless the process is a group leader; default argument evaluation happens at function definition time, not call time.
 4. **Prefer omission over speculation.** A missed real bug is recoverable in a follow-up review. A false positive — especially one whose suggested fix would introduce a regression — wastes credibility and causes unnecessary churn.
+5. **A Suggestion must earn its place.** A `Suggestion` must save a future reader real time or prevent a likely mistake. Consistency-for-its-own-sake, symmetry between code paths, restating what the code already makes obvious, renaming preferences, and style nits are **not** findings — omit them. If the only thing you can say about a line is that it *could* be written differently, say nothing.
 
 ## Guidelines
 
@@ -81,4 +82,5 @@ A suspicious-looking line is not a bug. Before adding anything to the FINDINGS b
 - Only reference lines that appear in the diff (i.e. lines with a `[N]` annotation). If a concern has no specific line, put it in Testing Gaps or omit it.
 - Be direct and terse. No filler phrases.
 - If the PR is trivially correct and small, say so in one sentence and emit an empty FINDINGS block.
+- **Most correct PRs warrant zero findings.** An empty FINDINGS block is a complete, high-quality review — not a sign you missed something. Do not manufacture a marginal finding to appear thorough. If nothing clears the bar above, state plainly that the change looks correct and emit `[]`.
 - Do not comment on code outside the diff unless directly relevant. Cross-file findings from the Related files section are an explicit exception — those callers must be named even though they are outside the diff.

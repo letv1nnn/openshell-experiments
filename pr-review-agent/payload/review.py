@@ -338,6 +338,84 @@ def _parse_output(raw: str) -> tuple[str, list[dict]]:
         return raw.strip(), []
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _stderr_tail(stderr: str, limit: int = 1000) -> str:
+    """Last non-empty, ANSI-stripped lines of stderr, capped near `limit` chars
+    on whole-line boundaries so the result never starts with a partial line."""
+    lines = [_ANSI_RE.sub("", ln) for ln in stderr.splitlines() if ln.strip()]
+    kept: list[str] = []
+    total = 0
+    for ln in reversed(lines):
+        add = len(ln) + (1 if kept else 0)  # +1 for the joining newline
+        if kept and total + add > limit:
+            break
+        kept.append(ln)
+        total += add
+    kept.reverse()
+    return "\n".join(kept)[-limit:]  # a single oversized newest line stays bounded
+
+
+def _usage_from(tokens: dict) -> dict:
+    cache = tokens.get("cache") or {}
+    return {
+        "input": tokens.get("input", 0),
+        "output": tokens.get("output", 0),
+        "reasoning": tokens.get("reasoning", 0),
+        "cache_read": cache.get("read", 0),
+    }
+
+
+def _parse_opencode_events(path: str) -> tuple[str, dict, str]:
+    """Parse OpenCode's newline-delimited `--format json` event stream.
+
+    Returns (assistant_text, usage, error). OpenCode exits 0 even on API
+    failures — those arrive as {"type":"error"} events — so the returned
+    error string, not the process return code, is the authoritative signal.
+
+    Event names vary across OpenCode versions, so both the current (`text`,
+    `step_finish`) and older (`message.part.updated`, `message.updated`)
+    spellings are accepted. Text parts carry the full cumulative text each
+    time, so keeping the latest per part id reassembles the message.
+    """
+    text_parts: dict[str, str] = {}   # part id -> latest cumulative text
+    order: list[str] = []
+    usage: dict = {}
+    error = ""
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # opencode may interleave a stray non-JSON line
+            etype = ev.get("type")
+            part = ev.get("part") or {}
+            if etype == "text" or (etype == "message.part.updated" and part.get("type") == "text"):
+                pid = part.get("id") or str(len(order))
+                if pid not in text_parts:
+                    order.append(pid)
+                text_parts[pid] = part.get("text", "")
+            elif etype in ("step_finish", "step-finish") and part.get("tokens"):
+                usage = _usage_from(part["tokens"])
+            elif etype == "message.updated":
+                info = ev.get("info") or {}
+                if info.get("role") == "assistant" and info.get("tokens"):
+                    usage = _usage_from(info["tokens"])
+            elif etype in ("error", "session.error"):
+                err = ev.get("error") or {}
+                data = err.get("data") or {}
+                name = err.get("name") or "Error"
+                msg = data.get("message") or "unknown error"
+                url = (data.get("metadata") or {}).get("url")
+                error = f"{name}: {msg}" + (f" ({url})" if url else "")
+    text = "".join(text_parts[p] for p in order)
+    return text, usage, error
+
+
 def _split_findings(
     findings: list[dict], valid: set[tuple[str, int]]
 ) -> tuple[list[dict], list[dict]]:
@@ -489,7 +567,7 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
         try:
             with open(opencode_out, "w") as out_fh, open(opencode_err, "w") as err_fh:
                 proc = subprocess.Popen(
-                    ["opencode", "run", "--model", model],
+                    ["opencode", "run", "--model", model, "--format", "json"],
                     env={**os.environ,
                          "ANTHROPIC_BASE_URL": "https://inference.local/v1",
                          "ANTHROPIC_API_KEY": "unused"},
@@ -519,7 +597,11 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
         def _heartbeat():
             while not stop_heartbeat.wait(30):
                 elapsed = int(time.monotonic() - start_time)
-                log.debug("OpenCode still running... %ds elapsed.", elapsed)
+                try:
+                    nbytes = os.path.getsize(opencode_out)
+                except OSError:
+                    nbytes = 0
+                log.info("OpenCode running... %ds elapsed, %d bytes streamed.", elapsed, nbytes)
 
         threading.Thread(target=_heartbeat, daemon=True).start()
 
@@ -536,22 +618,32 @@ def run_review(org: str, repo: str, pr_number: int, head_sha: str,
 
         with open(opencode_err) as f:
             stderr = f.read()
-        if stderr:
-            log.debug("OpenCode stderr:\n%s", stderr)
 
-        with open(opencode_out) as f:
-            stdout = f.read()
+        text, usage, oc_error = _parse_opencode_events(opencode_out)
 
-        log.info("OpenCode exited %d, output: %d bytes.", proc.returncode, len(stdout))
+        if usage:
+            log.info(
+                "OpenCode usage: %d in / %d out tok (%d reasoning, %d cache read).",
+                usage["input"], usage["output"], usage["reasoning"],
+                usage["cache_read"],
+            )
+        log.info("OpenCode exited %d, %d chars of review text.", proc.returncode, len(text))
+
+        # OpenCode exits 0 even on API failures — the error event is the real
+        # signal, so check it before the return code.
+        if oc_error:
+            log.error("OpenCode API error — %s", oc_error)
+            return False
         if proc.returncode != 0:
-            log.error("OpenCode failed (exit %d). Run with LOG_LEVEL=DEBUG for stderr.", proc.returncode)
+            log.error("OpenCode failed (exit %d). stderr tail:\n%s",
+                      proc.returncode, _stderr_tail(stderr))
+            return False
+        if not text.strip():
+            log.error("OpenCode produced no review text. stderr tail:\n%s",
+                      _stderr_tail(stderr))
             return False
 
-        if not stdout.strip():
-            log.error("OpenCode produced empty output. Run with LOG_LEVEL=DEBUG for stderr.")
-            return False
-
-        prose, findings = _parse_output(stdout)
+        prose, findings = _parse_output(text)
         inline_comments, fallback = _split_findings(findings, valid_lines)
 
         if fallback:
